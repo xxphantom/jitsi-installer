@@ -159,7 +159,10 @@ TRANSLATIONS_EN[spinner_updating_apt]="Updating package cache..."
 TRANSLATIONS_EN[spinner_configuring_firewall]="Configuring firewall..."
 
 TRANSLATIONS_EN[firewall_opening_ports]="Opening required ports..."
-TRANSLATIONS_EN[firewall_ports_opened]="Ports opened: 80/tcp, 443/tcp, 10000/udp"
+TRANSLATIONS_EN[firewall_ports_opened]="Ports opened: %s/tcp (SSH), 80/tcp, 443/tcp, 10000/udp"
+TRANSLATIONS_EN[firewall_ssh_detected]="Detected SSH port: %s"
+TRANSLATIONS_EN[firewall_ssh_allowed]="SSH port %s/tcp allowed"
+TRANSLATIONS_EN[firewall_enabled]="Firewall enabled."
 
 TRANSLATIONS_EN[deps_docker_installed]="Docker is already installed."
 TRANSLATIONS_EN[deps_installing_docker]="Installing Docker..."
@@ -280,7 +283,10 @@ TRANSLATIONS_RU[spinner_updating_apt]="Обновление кэша пакет�
 TRANSLATIONS_RU[spinner_configuring_firewall]="Настройка брандмауэра..."
 
 TRANSLATIONS_RU[firewall_opening_ports]="Открытие необходимых портов..."
-TRANSLATIONS_RU[firewall_ports_opened]="Открыты порты: 80/tcp, 443/tcp, 10000/udp"
+TRANSLATIONS_RU[firewall_ports_opened]="Открыты порты: %s/tcp (SSH), 80/tcp, 443/tcp, 10000/udp"
+TRANSLATIONS_RU[firewall_ssh_detected]="Обнаружен SSH-порт: %s"
+TRANSLATIONS_RU[firewall_ssh_allowed]="SSH-порт %s/tcp разрешён"
+TRANSLATIONS_RU[firewall_enabled]="Файрволл включён."
 
 TRANSLATIONS_RU[deps_docker_installed]="Docker уже установлен."
 TRANSLATIONS_RU[deps_installing_docker]="Установка Docker..."
@@ -593,10 +599,26 @@ install_dependencies() {
 
     if command -v ufw &>/dev/null; then
         show_info "$(t firewall_opening_ports)"
+
+        local ssh_port
+        ssh_port=$(ss -tlnp | grep sshd | awk '{print $4}' | grep -oP ':\K[0-9]+' | head -1)
+        if [[ -z "$ssh_port" ]]; then
+            ssh_port=$(grep -E '^Port\s+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -1)
+        fi
+        ssh_port="${ssh_port:-22}"
+
+        show_info "$(printf "$(t firewall_ssh_detected)" "$ssh_port")"
+
+        ufw allow "$ssh_port/tcp" >/dev/null 2>&1
+
         ufw allow 80/tcp >/dev/null 2>&1
         ufw allow 443/tcp >/dev/null 2>&1
         ufw allow 10000/udp >/dev/null 2>&1
-        show_success "$(t firewall_ports_opened)"
+
+        ufw --force enable >/dev/null 2>&1
+
+        show_success "$(printf "$(t firewall_ports_opened)" "$ssh_port")"
+        show_success "$(t firewall_enabled)"
     fi
 
     echo
