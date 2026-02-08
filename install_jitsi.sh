@@ -1062,6 +1062,59 @@ view_logs() {
 #                              USER MANAGEMENT FUNCTIONS
 # ===================================================================================
 
+add_user_to_credentials() {
+    local username="$1"
+    local password="$2"
+    local creds_file="$JITSI_DIR/credentials.txt"
+
+    [[ ! -f "$creds_file" ]] && return
+
+    if grep -qF "Username: $username" "$creds_file"; then
+        return
+    fi
+
+    echo "" >> "$creds_file"
+    echo "Username: $username" >> "$creds_file"
+    echo "Password: $password" >> "$creds_file"
+}
+
+remove_user_from_credentials() {
+    local username="$1"
+    local creds_file="$JITSI_DIR/credentials.txt"
+
+    [[ ! -f "$creds_file" ]] && return
+
+    local tmp_file
+    tmp_file=$(mktemp)
+    local skip_next=0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "Username: $username" ]]; then
+            skip_next=1
+            continue
+        fi
+        if [[ $skip_next -eq 1 ]]; then
+            skip_next=0
+            continue
+        fi
+        echo "$line" >> "$tmp_file"
+    done < "$creds_file"
+
+    # Remove trailing blank lines
+    sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmp_file"
+
+    mv "$tmp_file" "$creds_file"
+    chmod 600 "$creds_file"
+}
+
+update_user_password_in_credentials() {
+    local username="$1"
+    local password="$2"
+
+    remove_user_from_credentials "$username"
+    add_user_to_credentials "$username" "$password"
+}
+
 list_users() {
     if ! check_containers_running; then
         show_error "$(t error_containers_not_running)"
@@ -1111,6 +1164,7 @@ create_user() {
         register "$username" meet.jitsi "$password" >/dev/null 2>&1; then
         echo
         show_success "$(t users_created)"
+        add_user_to_credentials "$username" "$password"
     else
         echo
         show_error "$(t error_admin_creation_failed)"
@@ -1133,6 +1187,7 @@ delete_user() {
 
         echo
         show_success "$(t users_deleted)"
+        remove_user_from_credentials "$username"
     fi
 }
 
@@ -1165,6 +1220,7 @@ change_user_password() {
         register "$username" meet.jitsi "$password" >/dev/null 2>&1; then
         echo
         show_success "$(t users_password_changed)"
+        update_user_password_in_credentials "$username" "$password"
     else
         echo
         show_error "Failed to change password"
